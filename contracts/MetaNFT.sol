@@ -40,8 +40,16 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
     //claimable_count, claimed_count saylari, pulsuz claim eledikce claimed_count say artir claimable_counta-qeder
     mapping(address => OptionLaunchpadLand) public launchpadLands;
 
-    uint256 LAND_PRICE_METO = 1000000000000000;
-    uint256 LAND_PRICE_USDT = 100;
+    // use as the index if item not found in array
+    uint256 private ID_NOT_FOUND = 9999999999999999;
+    // argument with the ID_SKIP_VALUE block all transaction on it.
+    // skip changes over this value
+    uint256 private ID_SKIP_VALUE = 9999999999999999;
+
+    uint256 public LAND_PRICE_METO = 1000000000000000;
+    uint256 public LAND_PRICE_USDT = 100;
+    uint256 public WHITELIST_PRICE_METO = 1000000000000000;
+    uint256 public WHITELIST_PRICE_USDT = 50;
 
     //keep land max tid (technical id)
     uint256 TID_MAX_INTERVAL = 24000;
@@ -54,7 +62,7 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         
     string public baseTokenURI;
 
-    uint256 private ID_NOT_FOUND = 9999999999999999;
+    
 
     bool private launchpadSaleStatus;
     bool private whiteListSaleStatus;
@@ -93,14 +101,28 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
 
     /* Start of Administrative Functions */
 
-    function setLandPriceWithMeto(uint256 v) public onlyOwner 
-    {
-        LAND_PRICE_METO = v;
+    function setLandPriceWithMeto(uint256 _price, uint256 _whiteListPrice) public onlyOwner 
+    {   
+        if (_price != ID_SKIP_VALUE || _price == LAND_PRICE_METO) {
+            LAND_PRICE_METO = _price;
+        }
+
+        if ( _whiteListPrice != ID_SKIP_VALUE || _whiteListPrice == WHITELIST_PRICE_METO) {
+            WHITELIST_PRICE_METO = _whiteListPrice;
+        }
+
     }
 
-    function setLandPriceWithUSDT(uint256 v) public onlyOwner 
+    function setLandPriceWithUSDT(uint256 _price, uint256 _whiteListPrice) public onlyOwner 
     {
-        LAND_PRICE_USDT = v;
+        if (_price != ID_SKIP_VALUE || _price == LAND_PRICE_USDT) {
+            LAND_PRICE_USDT = _price;
+        }
+
+        if ( _whiteListPrice != ID_SKIP_VALUE || _whiteListPrice == WHITELIST_PRICE_USDT) {
+            WHITELIST_PRICE_USDT = _whiteListPrice;
+        }
+    
     }
 
     //set TID_MAX_INTERVAL value by owner
@@ -115,11 +137,14 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         TID_MIN_INTERVAL = v;
     }
 
-    // withdraw contract balance to owner wallet
-    function withdraw(address payable addr, uint amount) external onlyOwner {
-        SafeERC20Upgradeable.safeTransfer(meto, addr, amount);
+    // withdraw contract $METO balance to given wallet
+    function withdraw(address payable addr, uint256 _amount) external onlyOwner {
+        SafeERC20Upgradeable.safeTransfer(meto, addr, _amount);
     }
-
+    // withdraw contract $USDT balance to given wallet
+    function withdrawUSDT(address payable addr, uint256 _amount) external onlyOwner {
+        SafeERC20.safeTransfer(usdt, addr, _amount);
+    }
 
     // set lands as disabled
     function setLandAsDisabled(uint256[] memory _tids) public onlyOwner 
@@ -187,7 +212,7 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
     //set whitelist sale open/close
     function setWhitelistSaleStatus(bool _status) public onlyOwner
     {
-        whitelistSaleStatus = _status;
+        whiteListSaleStatus = _status;
     }
 
     //set private sale open/close
@@ -245,8 +270,6 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
     */
     function mintNfts(uint256[] memory _ids) public 
     {
-
-        
         require(_ids.length > 0, "_ids size can not be zero.");
         uint256 totalPrice = LAND_PRICE_METO * _ids.length;
         require(meto.balanceOf(msg.sender) > LAND_PRICE_METO * _ids.length,  "User has not enough balance.");
