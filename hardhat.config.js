@@ -7,6 +7,12 @@ const { API_URL, PRIVATE_KEY } = process.env;
 module.exports = {
    solidity: "0.8.12",
    defaultNetwork: "ropsten",
+   settings: {
+      optimizer: {
+        enabled: true,
+        runs: 1,
+      },
+    },
    networks: {
       hardhat: {},
       ropsten: {
