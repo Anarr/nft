@@ -11,10 +11,11 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 contract MetaNFT is ERC721Enumerable, Ownable  {
 
     IERC20Upgradeable meto;
-    IERC20Upgradeable usdt;
+    IERC20Upgradeable busd;
 
-    //keep sale source info.
-    enum SALE_FROM {PRIVATE, LAUNCHPAD, WHITELIST}
+    using Counters for Counters.Counter;
+    Counters.Counter private _tokenIds;
+    enum ASSET {METO, BUSD}
 
     struct OptionLaunchpadLand{
         uint ClaimableCount;
@@ -36,35 +37,28 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
 
     // use as the index if item not found in array
     uint256 private ID_NOT_FOUND = 9999999999999999;
-    // argument with the ID_SKIP_VALUE block all transaction on it.
-    uint256 private ID_SKIP_VALUE = 9999999999999999;
+    //block transaction or  set new land price if argument = ID_SKIP_PRICE_VALUE
+    uint256 private ID_SKIP_PRICE_VALUE = 9999999999999999;
 
     uint256 public LAND_PRICE_METO = 1000000000000000;
-    uint256 public LAND_PRICE_USDT = 100;
+    uint256 public LAND_PRICE_BUSD = 100;
     uint256 public WHITELIST_PRICE_METO = 1000000000000000;
-    uint256 public WHITELIST_PRICE_USDT = 50;
+    uint256 public WHITELIST_PRICE_BUSD = 50;
 
-    //keep land max tid (technical id)
-    uint256 TID_MAX_INTERVAL = 24000;
-
-    //kep plot min tid (technical_id)
-    uint256 TID_MIN_INTERVAL = 1;
- 
-    using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
-        
+    uint256 MAX_TID = 24000;
+    uint256 MIN_TID = 1;
+         
     string public baseTokenURI;
     bool private launchpadSaleStatus;
     bool private whiteListSaleStatus;
     bool private privateSaleStatus;
     bool private publicSaleStatus;
 
-    event Mint(address indexed _from, uint256 tokenId, uint256 _price);
     event MultipleMint(address indexed _from, uint256[] tokenIds, uint256 _price);
     event Claim(address indexed _from, uint256 _tid, uint256 claimableCount, uint256 claimedCount);
 
     modifier Mintable(uint256 _tid) {
-        require(_tid <= TID_MAX_INTERVAL && _tid >= TID_MIN_INTERVAL, "Invalid tid.");
+        require(_tid <= MAX_TID && _tid >= MIN_TID, "Invalid tid.");
         require(!isDisabledLand(_tid), "The given tid is inside disabledLands.");
         require(_isSaleOpened(_tid), "The sale not opened yet.");
         _;
@@ -76,37 +70,46 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
 
     constructor() ERC721("MyNFT", "NFT") {
         meto = IERC20Upgradeable(0xc39A5f634CC86a84147f29a68253FE3a34CDEc57);
-        usdt = IERC20Upgradeable(0x337610d27c682E347C9cD60BD4b3b107C9d34dDd);
+        busd = IERC20Upgradeable(0xeD24FC36d5Ee211Ea25A80239Fb8C4Cfd80f12Ee);
         setBaseURI("ipfs://QmeYyiEmYhGmEuMU8q9uMs7Uprs7KGdEiKBwRpSsoapn2K/");
+    }
+
+    function _baseURI() internal 
+                    view 
+                    virtual 
+                    override 
+                    returns (string memory) {
+         return baseTokenURI;
+    }
+    
+    function setBaseURI(string memory _baseTokenURI) public onlyOwner {
+        baseTokenURI = _baseTokenURI;
     }
 
     /* Start of Administrative Functions */
     function setLandPriceWithMeto(uint256 _price, uint256 _whiteListPrice) public onlyOwner 
     {   
-        if (_price != ID_SKIP_VALUE || _price == LAND_PRICE_METO) {
+        if (_price != ID_SKIP_PRICE_VALUE || _price == LAND_PRICE_METO) {
             LAND_PRICE_METO = _price;
         }
-        if ( _whiteListPrice != ID_SKIP_VALUE || _whiteListPrice == WHITELIST_PRICE_METO) {
+        if ( _whiteListPrice != ID_SKIP_PRICE_VALUE || _whiteListPrice == WHITELIST_PRICE_METO) {
             WHITELIST_PRICE_METO = _whiteListPrice;
         }
     }
 
-    function setTIDMaxInterval(uint256 v) public onlyOwner
+    function setMaxAndMinTID(uint256 _min, uint256 _max) public onlyOwner
     {
-        TID_MAX_INTERVAL = v;
+        require(_min > 0 && _max > 0 && _max > _min, "invalid _max or _min value");
+        MIN_TID = _min;
+        MAX_TID = _max;
     }
 
-    function setTIDMinInterval(uint256 v) public onlyOwner
-    {
-        TID_MIN_INTERVAL = v;
-    }
-
-    function withdraw(address payable addr, uint256 _amount) external onlyOwner {
+    function withdrawMeto(address payable addr, uint256 _amount) external onlyOwner {
         SafeERC20Upgradeable.safeTransfer(meto, addr, _amount);
     }
 
-    function withdrawUSDT(address payable addr, uint256 _amount) external onlyOwner {
-        SafeERC20Upgradeable.safeTransfer(usdt, addr, _amount);
+    function withdrawBusd(address payable addr, uint256 _amount) external onlyOwner {
+        SafeERC20Upgradeable.safeTransfer(busd, addr, _amount);
     }
 
     function setLandAsDisabled(uint256[] memory _tids) public onlyOwner 
@@ -144,18 +147,6 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         launchpadLands[_owner] = _option;
     }
     
-    function _baseURI() internal 
-                    view 
-                    virtual 
-                    override 
-                    returns (string memory) {
-         return baseTokenURI;
-    }
-    
-    function setBaseURI(string memory _baseTokenURI) public onlyOwner {
-        baseTokenURI = _baseTokenURI;
-    }
-
     function setSaleStatus(bool _privateSaleStatus, bool _launchpadSaleStatus, bool _publicSaleStatus, bool _whiteListSaleStatus) public onlyOwner
     {
         privateSaleStatus = _privateSaleStatus;
@@ -172,80 +163,42 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         return collection[msg.sender];
     }
 
-    // mint mint single or multiple nft
-    function mintWithMeto(uint256 _tid)
-        public Mintable(_tid)
-        returns (uint256)
+    function mintWithMeto(uint256[] memory _tids) public 
     {
-
-        require(meto.balanceOf(msg.sender) > LAND_PRICE_METO, "User has not enough balance for this nft.");
-
-        //check _tid not belongs to privateSaleLands then first make payment
-        if (privateSaleLands[_tid] != msg.sender) {
-            SafeERC20Upgradeable.safeTransferFrom(meto, msg.sender, address(this), LAND_PRICE_METO);
-        }
-        _safeMint(msg.sender, _tid);
-        //insert minted nft to user collection
-        collection[msg.sender].push(_tid);
-        emit Mint(msg.sender, _tid, LAND_PRICE_METO);
-        return _tid;
-    }
-
-    // mint multiple nfts with meto
-    function mintMultipleNftWithMeto(uint256[] memory _ids) public 
-    {
-        require(_ids.length > 0, "_ids size can not be zero.");
-        uint256 totalPrice = LAND_PRICE_METO * _ids.length;
-        require(meto.balanceOf(msg.sender) > LAND_PRICE_METO * _ids.length,  "User has not enough balance.");
+        uint256[] memory filteredLands = filterAvailableLands(_tids);
+        uint256 totalPrice = calculateTotalPrice(filteredLands, ASSET.METO);
+        require(meto.balanceOf(msg.sender) > totalPrice,  "User has not enough balance.");
 
         SafeERC20Upgradeable.safeTransferFrom(meto, msg.sender, address(this), totalPrice);
     
-        for (uint i = 0; i < _ids.length; i++) {
-            _safeMint(msg.sender, _ids[i]);
+        for (uint i = 0; i < filteredLands.length; i++) {
+            _safeMint(msg.sender, filteredLands[i]);
             //insert minted nft to user collection
-            collection[msg.sender].push(_ids[i]);
+            collection[msg.sender].push(filteredLands[i]);
         }
 
-        emit MultipleMint(msg.sender, _ids, totalPrice);
+        emit MultipleMint(msg.sender, filteredLands, totalPrice);
     }
 
-    // mint mint single  nft with USDT asset
-    function mintWithUsdt(uint256 _tid)
-        public Mintable(_tid)
-        returns (uint256)
+    function mintWithBusd(uint256[] memory _tids) public 
     {
-        require(usdt.balanceOf(msg.sender) > LAND_PRICE_USDT, "User has not enough balance for this nft.");
-        //check _tid not belongs to privateSaleLands then first make payment
-        if (privateSaleLands[_tid] != msg.sender) {
-            SafeERC20Upgradeable.safeTransferFrom(usdt, msg.sender, address(this), LAND_PRICE_USDT);
-        }
-        _safeMint(msg.sender, _tid);
-        //insert minted nft to user collection
-        collection[msg.sender].push(_tid);
-        emit Mint(msg.sender, _tid, LAND_PRICE_USDT);
-        return _tid;
-    }
+        uint256[] memory filteredLands = filterAvailableLands(_tids);
+        uint256 totalPrice = calculateTotalPrice(filteredLands, ASSET.BUSD);
+        require(busd.balanceOf(msg.sender) > totalPrice,  "User has not enough balance.");
 
-        // mint mint multiple nfts 
-    function mintMultipleNftWithUsdt(uint256[] memory _ids) public 
-    {
-        require(_ids.length > 0, "_ids size can not be zero.");
-        uint256 totalPrice = LAND_PRICE_USDT * _ids.length;
-        require(usdt.balanceOf(msg.sender) > LAND_PRICE_USDT * _ids.length,  "User has not enough balance.");
-
-        SafeERC20Upgradeable.safeTransferFrom(usdt, msg.sender, address(this), totalPrice);
+        SafeERC20Upgradeable.safeTransferFrom(busd, msg.sender, address(this), totalPrice);
     
-        for (uint i = 0; i < _ids.length; i++) {
-            _safeMint(msg.sender, _ids[i]);
+        for (uint i = 0; i < filteredLands.length; i++) {
+            _safeMint(msg.sender, filteredLands[i]);
             //insert minted nft to user collection
-            collection[msg.sender].push(_ids[i]);
+            collection[msg.sender].push(filteredLands[i]);
         }
 
-        emit MultipleMint(msg.sender, _ids, totalPrice);
+        emit MultipleMint(msg.sender, filteredLands, totalPrice);
     }
 
     // claim mint single nft without payment and available from launchpad
-    function caim(uint256 _id)
+    function claim(uint256 _id)
         public Claimable
         returns (uint256)
     {
@@ -283,5 +236,55 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
             return false;
         }
         return true;
+    }
+    
+    function filterAvailableLands(uint256[] memory _tids) internal view returns(uint256[] memory filteredLands)
+    {
+        uint j = 0;
+        for (uint256 i = 0; i < _tids.length; i++) {
+            uint256 _tid = _tids[i];
+            //filter disable, not available for sale
+            if (isDisabledLand(_tid) || !_isSaleOpened(_tid)) {
+                continue;
+            }
+            //check if privateSaleLand then user has given access or not
+            if (privateSaleLands[_tid] != address(0) && privateSaleLands[_tid] != msg.sender) {
+                continue;
+            }
+
+            j++;
+            filteredLands[j] = _tid;
+        }
+
+        return filteredLands;
+    }
+
+    function calculateTotalPrice(uint256[] memory _tids, ASSET _asset) public view returns(uint256)
+    {
+        uint256 _price = 0;
+
+        if (whiteListSaleStatus && whiteListAddresses[msg.sender]) {
+            if (_asset == ASSET.METO) {
+                _price = WHITELIST_PRICE_METO;
+            } else if (_asset == ASSET.BUSD) {
+                _price = WHITELIST_PRICE_BUSD;
+            }
+        } else {
+            if (_asset == ASSET.METO) {
+                _price = LAND_PRICE_METO;
+            } else if (_asset == ASSET.BUSD) {
+                _price = LAND_PRICE_BUSD;
+            }
+        }
+
+        uint256 total = _price * _tids.length;
+
+        for(uint256 i = 0; i<_tids.length; i++) {   
+            if (privateSaleLands[_tids[i]] == msg.sender) {
+                total -= _price;
+            }
+        }
+
+        return total;
     }
 }
