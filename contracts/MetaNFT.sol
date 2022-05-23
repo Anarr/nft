@@ -24,27 +24,22 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
 
     //keeps user minted nfts ids
     mapping(address => uint256[]) public collection;
-
     //keep disabled lands ids
     uint256[] public disabledLands;
-
     //keep investors lands. These lands do not require payment.
     mapping(uint256 => address) public privateSaleLands;
-
     //keep whitelist users list. Whitelist users can buy nfts earlier than others.
     mapping(address => bool) whiteListAddresses;
     mapping(address => OptionLaunchpadLand) public launchpadLands;
-
     // use as the index if item not found in array
     uint256 private ID_NOT_FOUND = 9999999999999999;
     //block transaction or  set new land price if argument = ID_SKIP_PRICE_VALUE
     uint256 private ID_SKIP_PRICE_VALUE = 9999999999999999;
-
     uint256 public LAND_PRICE_METO = 1000000000000000;
     uint256 public LAND_PRICE_BUSD = 100;
     uint256 public WHITELIST_PRICE_METO = 1000000000000000;
     uint256 public WHITELIST_PRICE_BUSD = 50;
-
+    
     uint256 MAX_TID = 24000;
     uint256 MIN_TID = 1;
          
@@ -63,6 +58,7 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         require(_isSaleOpened(_tid), "The sale not opened yet.");
         _;
     }
+
     modifier Claimable () {
         require(launchpadSaleStatus, "Launchad sale not opened yet.");
         _;
@@ -142,14 +138,14 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         return ID_NOT_FOUND;
     }
 
-    function setLaunchpadLand(address _owner, OptionLaunchpadLand memory _option) public onlyOwner
+    //todo allow multiple launchad address insertation
+    function setLaunchpadAddresses(address _owner, OptionLaunchpadLand memory _option) public onlyOwner
     {
         launchpadLands[_owner] = _option;
     }
     
-    function setSaleStatus(bool _privateSaleStatus, bool _launchpadSaleStatus, bool _publicSaleStatus, bool _whiteListSaleStatus) public onlyOwner
+    function setSaleStatus(bool _launchpadSaleStatus, bool _publicSaleStatus, bool _whiteListSaleStatus) public onlyOwner
     {
-        privateSaleStatus = _privateSaleStatus;
         launchpadSaleStatus = _launchpadSaleStatus;
         publicSaleStatus = _publicSaleStatus;
         whiteListSaleStatus = _whiteListSaleStatus;
@@ -200,16 +196,14 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
     // claim mint single nft without payment and available from launchpad
     function claim(uint256 _id)
         public Claimable
-        returns (uint256)
     {
-        require(launchpadLands[msg.sender].ClaimedCount <= launchpadLands[msg.sender].ClaimableCount, "reach calimable limit.");
+        require(launchpadLands[msg.sender].ClaimedCount < launchpadLands[msg.sender].ClaimableCount, "reach calimable limit.");
         _safeMint(msg.sender, _id);
         //increase user claimed land count
         launchpadLands[msg.sender].ClaimedCount++;
         //insert minted nft to user collection
         collection[msg.sender].push(_id);
         emit Claim(msg.sender, _id, launchpadLands[msg.sender].ClaimableCount, launchpadLands[msg.sender].ClaimedCount);
-        return _id;
     }
 
     // check given _tid inside disabledLand or not
@@ -224,18 +218,18 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         return false;
     }
 
-    function _isSaleOpened(uint256 _tid) internal view returns(bool)
+    function _isSaleOpened() internal view returns(bool)
     {
-        if (privateSaleLands[_tid] != address(0) && !privateSaleStatus) {
-            return false;
+        if (publicSaleStatus) {
+            return true;
         }
-        if (whiteListAddresses[msg.sender] && !whiteListSaleStatus) {
-            return false;
+        //todo add launchpad control
+
+        if (whiteListAddresses[msg.sender] && whiteListSaleStatus) {
+            return true;
         }
-        if (!publicSaleStatus) {
-            return false;
-        }
-        return true;
+
+        return false;
     }
     
     function filterAvailableLands(uint256[] memory _tids) internal view returns(uint256[] memory filteredLands)
@@ -243,12 +237,9 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         uint j = 0;
         for (uint256 i = 0; i < _tids.length; i++) {
             uint256 _tid = _tids[i];
-            //filter disable, not available for sale
-            if (isDisabledLand(_tid) || !_isSaleOpened(_tid)) {
-                continue;
-            }
-            //check if privateSaleLand then user has given access or not
-            if (privateSaleLands[_tid] != address(0) && privateSaleLands[_tid] != msg.sender) {
+
+            //todo filter disable, minted lands
+            if (isDisabledLand(_tid)) {
                 continue;
             }
 
@@ -259,11 +250,12 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         return filteredLands;
     }
 
-    function calculateTotalPrice(uint256[] memory _tids, ASSET _asset) public view returns(uint256)
+    function calculateTotalPrice(uint256[] memory _tids, ASSET _asset) internal view returns(uint256)
     {
         uint256 _price = 0;
 
-        if (whiteListSaleStatus && whiteListAddresses[msg.sender]) {
+        // public bagli olub whitelist aciq olanda whitelist qiymetine alir yoxsa ele public qiymetine
+        if (whiteListAddresses[msg.sender] && !publicSaleStatus && whiteListSaleStatus) {
             if (_asset == ASSET.METO) {
                 _price = WHITELIST_PRICE_METO;
             } else if (_asset == ASSET.BUSD) {
@@ -277,14 +269,6 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
             }
         }
 
-        uint256 total = _price * _tids.length;
-
-        for(uint256 i = 0; i<_tids.length; i++) {   
-            if (privateSaleLands[_tids[i]] == msg.sender) {
-                total -= _price;
-            }
-        }
-
-        return total;
+        return _price * _tids.length;
     }
 }
