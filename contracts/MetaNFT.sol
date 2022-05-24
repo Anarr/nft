@@ -52,13 +52,6 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
     event MultipleMint(address indexed _from, uint256[] tokenIds, uint256 _price);
     event Claim(address indexed _from, uint256 _tid, uint256 claimableCount, uint256 claimedCount);
 
-    modifier Mintable(uint256 _tid) {
-        require(_tid <= MAX_TID && _tid >= MIN_TID, "Invalid tid.");
-        require(!isDisabledLand(_tid), "The given tid is inside disabledLands.");
-        require(_isSaleOpened(_tid), "The sale not opened yet.");
-        _;
-    }
-
     modifier Claimable () {
         require(launchpadSaleStatus, "Launchad sale not opened yet.");
         _;
@@ -139,9 +132,13 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
     }
 
     //todo allow multiple launchad address insertation
-    function setLaunchpadAddresses(address _owner, OptionLaunchpadLand memory _option) public onlyOwner
+    function setLaunchpadAddresses(address[] memory  _addrs, OptionLaunchpadLand[] memory _options) public onlyOwner
     {
-        launchpadLands[_owner] = _option;
+        require(_addrs.length == _options.length, "addresses and launchpad options count is not equal.");
+
+        for (uint256 i = 0; i < _addrs.length; i++) {
+            launchpadLands[_addrs[i]] = _options[i];
+        }
     }
     
     function setSaleStatus(bool _launchpadSaleStatus, bool _publicSaleStatus, bool _whiteListSaleStatus) public onlyOwner
@@ -168,6 +165,11 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         SafeERC20Upgradeable.safeTransferFrom(meto, msg.sender, address(this), totalPrice);
     
         for (uint i = 0; i < filteredLands.length; i++) {
+
+            if (filteredLands[i] == 0) {
+                continue;
+            }
+
             _safeMint(msg.sender, filteredLands[i]);
             //insert minted nft to user collection
             collection[msg.sender].push(filteredLands[i]);
@@ -185,6 +187,11 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         SafeERC20Upgradeable.safeTransferFrom(busd, msg.sender, address(this), totalPrice);
     
         for (uint i = 0; i < filteredLands.length; i++) {
+
+            if (filteredLands[i] == 0) {
+                continue;
+            }
+            
             _safeMint(msg.sender, filteredLands[i]);
             //insert minted nft to user collection
             collection[msg.sender].push(filteredLands[i]);
@@ -223,8 +230,7 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         if (publicSaleStatus) {
             return true;
         }
-        //todo add launchpad control
-
+        
         if (whiteListAddresses[msg.sender] && whiteListSaleStatus) {
             return true;
         }
@@ -232,19 +238,17 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
         return false;
     }
     
-    function filterAvailableLands(uint256[] memory _tids) internal view returns(uint256[] memory filteredLands)
+    function filterAvailableLands(uint256[] memory _tids) private view returns(uint256[] memory)
     {
-        uint j = 0;
-        for (uint256 i = 0; i < _tids.length; i++) {
-            uint256 _tid = _tids[i];
 
-            //todo filter disable, minted lands
-            if (isDisabledLand(_tid)) {
+        uint256[] memory filteredLands = new uint256[](_tids.length);
+
+        for (uint i = 0; i < _tids.length; i++) {
+            if (isDisabledLand(_tids[i])) {
                 continue;
             }
 
-            j++;
-            filteredLands[j] = _tid;
+            filteredLands[i] = _tids[i];
         }
 
         return filteredLands;
@@ -253,8 +257,8 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
     function calculateTotalPrice(uint256[] memory _tids, ASSET _asset) internal view returns(uint256)
     {
         uint256 _price = 0;
+        uint256 cnt = 0;
 
-        // public bagli olub whitelist aciq olanda whitelist qiymetine alir yoxsa ele public qiymetine
         if (whiteListAddresses[msg.sender] && !publicSaleStatus && whiteListSaleStatus) {
             if (_asset == ASSET.METO) {
                 _price = WHITELIST_PRICE_METO;
@@ -269,6 +273,13 @@ contract MetaNFT is ERC721Enumerable, Ownable  {
             }
         }
 
-        return _price * _tids.length;
+
+        for (uint256 i = 0; i<_tids.length; i++) {
+            if (_tids[i] > 0) {
+                cnt++;
+            }
+        }
+
+        return _price * cnt;
     }
 }
